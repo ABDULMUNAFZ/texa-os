@@ -401,8 +401,10 @@ export function ChatPanel({
     rec.onend = () => {
       setListening(false);
       if (handsFree && !sending) {
-        // Restart continuous mode
-        setTimeout(() => startListening(true), 400);
+        const text = stripWakeWord(finalText.trim());
+        setInterim("");
+        if (text.length > 2) sendText(text);
+        else setTimeout(() => startListening(true), 400);
       } else if (!handsFree && finalText.trim()) {
         const text = finalText.trim();
         setInterim("");
@@ -519,6 +521,13 @@ export function ChatPanel({
           </div>
         )}
         <div className="glass rounded-2xl p-2 flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => handleFiles(e.currentTarget.files)}
+          />
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
