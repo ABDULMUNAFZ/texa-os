@@ -15,7 +15,7 @@ export function VoiceWaveform({
     let analyser: AnalyserNode | null = null;
     let stream: MediaStream | null = null;
     let ctx: AudioContext | null = null;
-    let data: Uint8Array | null = null;
+    let data: Uint8Array<ArrayBuffer> | null = null;
 
     async function setup() {
       if (!active) return;
