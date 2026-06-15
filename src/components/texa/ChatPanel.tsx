@@ -23,6 +23,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { ModelSelector } from "./ModelSelector";
+import { MessageContent } from "./MessageContent";
 import {
   containsWakeWord,
   getSpeechRecognition,
@@ -586,8 +587,8 @@ function MessageBubble({ message, streaming }: { message: Msg; streaming?: boole
             : "max-w-[80%] rounded-2xl rounded-bl-md px-4 py-2.5 text-sm text-foreground"
         }
       >
-        <div className="whitespace-pre-wrap break-words">
-          {message.content}
+        <div className="break-words">
+          <MessageContent text={message.content} />
           {streaming && (
             <span className="inline-block w-1.5 h-3.5 align-middle ml-0.5 bg-[color:var(--color-neon)] animate-pulse" />
           )}
