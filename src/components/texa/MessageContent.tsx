@@ -19,6 +19,34 @@ function parse(src: string): Part[] {
 
 const RUNNABLE = new Set(["js", "javascript", "ts", "typescript", "html"]);
 
+function buildRunnerScript(token: string, source: string) {
+  return `
+const logs = [];
+const send = () => parent.postMessage({ t: ${JSON.stringify(token)}, logs: logs.join("\\n") }, "*");
+const format = (value) => {
+  try { return typeof value === "object" ? JSON.stringify(value) : String(value); }
+  catch { return String(value); }
+};
+["log", "info", "warn", "error"].forEach((key) => {
+  const original = console[key];
+  console[key] = (...args) => {
+    logs.push(args.map(format).join(" "));
+    send();
+    if (original) original(...args);
+  };
+});
+window.onerror = (message) => { logs.push("Error: " + message); send(); };
+try {
+  (async () => {
+    const result = await (async () => {\n${source}\n})();
+    if (result !== undefined) { logs.push(String(result)); send(); }
+  })().catch((error) => { logs.push("Error: " + (error?.message || error)); send(); });
+} catch (error) {
+  logs.push("Error: " + (error?.message || error));
+  send();
+}`;
+}
+
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
   const [copied, setCopied] = useState(false);
   const [output, setOutput] = useState<string | null>(null);
