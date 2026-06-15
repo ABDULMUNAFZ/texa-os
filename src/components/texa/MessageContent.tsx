@@ -69,9 +69,9 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   };
 
   const run = () => {
+    stop();
     setOutput("");
     setRunning(true);
-    stop();
     const iframe = document.createElement("iframe");
     iframe.sandbox.add("allow-scripts");
     iframe.style.display = "none";
