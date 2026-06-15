@@ -23,6 +23,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { ModelSelector } from "./ModelSelector";
+import { MessageContent } from "./MessageContent";
 import {
   containsWakeWord,
   getSpeechRecognition,
