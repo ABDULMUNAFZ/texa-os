@@ -19,6 +19,34 @@ function parse(src: string): Part[] {
 
 const RUNNABLE = new Set(["js", "javascript", "ts", "typescript", "html"]);
 
+function buildRunnerScript(token: string, source: string) {
+  return `
+const logs = [];
+const send = () => parent.postMessage({ t: ${JSON.stringify(token)}, logs: logs.join("\\n") }, "*");
+const format = (value) => {
+  try { return typeof value === "object" ? JSON.stringify(value) : String(value); }
+  catch { return String(value); }
+};
+["log", "info", "warn", "error"].forEach((key) => {
+  const original = console[key];
+  console[key] = (...args) => {
+    logs.push(args.map(format).join(" "));
+    send();
+    if (original) original(...args);
+  };
+});
+window.onerror = (message) => { logs.push("Error: " + message); send(); };
+try {
+  (async () => {
+    const result = await (async () => {\n${source}\n})();
+    if (result !== undefined) { logs.push(String(result)); send(); }
+  })().catch((error) => { logs.push("Error: " + (error?.message || error)); send(); });
+} catch (error) {
+  logs.push("Error: " + (error?.message || error));
+  send();
+}`;
+}
+
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
   const [copied, setCopied] = useState(false);
   const [output, setOutput] = useState<string | null>(null);
@@ -41,6 +69,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   };
 
   const run = () => {
+    stop();
     setOutput("");
     setRunning(true);
     const iframe = document.createElement("iframe");
@@ -50,13 +79,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
     const isHtml = lang === "html";
     const body = isHtml
       ? code
-      : `<script>
-          const logs=[];
-          const send=()=>parent.postMessage({t:"${token}",logs:logs.join("\\n")},"*");
-          ["log","info","warn","error"].forEach(k=>{const o=console[k];console[k]=(...a)=>{logs.push(a.map(x=>{try{return typeof x==="object"?JSON.stringify(x):String(x)}catch{return String(x)}}).join(" "));send();o&&o(...a);}});
-          window.onerror=(m)=>{logs.push("Error: "+m);send();};
-          try{(async()=>{const r=await (async()=>{${code}\n})();if(r!==undefined){logs.push(String(r));send();}})().catch(e=>{logs.push("Error: "+e.message);send();});}catch(e){logs.push("Error: "+e.message);send();}
-        <\/script>`;
+      : `<script>\n${buildRunnerScript(token, code)}\n<\/script>`;
     iframe.srcdoc = `<!doctype html><html><body>${body}</body></html>`;
     const handler = (e: MessageEvent) => {
       if (e.data && e.data.t === token) setOutput(e.data.logs);
