@@ -30,6 +30,7 @@ import {
   speechSupported,
   stripWakeWord,
 } from "@/lib/texa-voice";
+import type { PlaybackHandle } from "@/lib/texa-voice";
 import { toast } from "sonner";
 import type { IslandState } from "./DynamicIsland";
 
@@ -152,7 +153,7 @@ export function ChatPanel({
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
   const abortRef = useRef<AbortController | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<PlaybackHandle | null>(null);
   const recRef = useRef<ReturnType<typeof getSpeechRecognition>>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
