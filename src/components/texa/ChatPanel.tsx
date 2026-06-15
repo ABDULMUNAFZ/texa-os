@@ -155,6 +155,7 @@ export function ChatPanel({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recRef = useRef<ReturnType<typeof getSpeechRecognition>>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   useEffect(() => {
@@ -180,9 +181,9 @@ export function ChatPanel({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
   });
 
-  async function sendText(text: string) {
+  async function sendText(text: string, skipActionInference = false) {
     if (!text.trim() || sending) return;
-    const proposedAction = inferPendingAction(text);
+    const proposedAction = skipActionInference ? null : inferPendingAction(text);
     if (proposedAction) setPendingAction(proposedAction);
     const userMsg: Msg = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages((m) => [...m, userMsg]);
