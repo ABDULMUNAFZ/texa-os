@@ -297,7 +297,7 @@ export function ChatPanel({
 
   async function executePendingAction() {
     if (!pendingAction) return;
-    onIslandChange({ kind: "executing", label: pendingAction.title });
+    onIslandChange({ kind: "task", label: pendingAction.title });
     try {
       if (pendingAction.kind === "open_url") {
         window.open(pendingAction.url, "_blank", "noopener,noreferrer");
