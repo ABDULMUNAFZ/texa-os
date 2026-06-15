@@ -11,7 +11,17 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Mic, MicOff, Send, Square, Volume2, VolumeX } from "lucide-react";
+import {
+  CheckCircle2,
+  FileText,
+  Mic,
+  MicOff,
+  Send,
+  Square,
+  Volume2,
+  VolumeX,
+  XCircle,
+} from "lucide-react";
 import { ModelSelector } from "./ModelSelector";
 import {
   containsWakeWord,
@@ -20,10 +30,94 @@ import {
   speechSupported,
   stripWakeWord,
 } from "@/lib/texa-voice";
+import type { PlaybackHandle } from "@/lib/texa-voice";
 import { toast } from "sonner";
 import type { IslandState } from "./DynamicIsland";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; created_at?: string };
+type PendingAction =
+  | { kind: "open_url"; title: string; description: string; url: string }
+  | { kind: "web_search"; title: string; description: string; query: string }
+  | { kind: "copy_text"; title: string; description: string; text: string }
+  | { kind: "pick_files"; title: string; description: string }
+  | { kind: "notify"; title: string; description: string; text: string; delayMs: number };
+
+const SITE_URLS: Record<string, string> = {
+  google: "https://google.com",
+  youtube: "https://youtube.com",
+  gmail: "https://mail.google.com",
+  whatsapp: "https://web.whatsapp.com",
+  instagram: "https://instagram.com",
+  github: "https://github.com",
+  linkedin: "https://linkedin.com",
+};
+
+function inferPendingAction(text: string): PendingAction | null {
+  const raw = text.trim();
+  const lower = raw.toLowerCase();
+  const urlMatch = raw.match(/https?:\/\/[^\s]+/i);
+  if (/\b(open|launch|go to|visit)\b/i.test(raw)) {
+    const namedSite = Object.keys(SITE_URLS).find((site) => lower.includes(site));
+    const url = urlMatch?.[0] || (namedSite ? SITE_URLS[namedSite] : null);
+    if (url) {
+      return {
+        kind: "open_url",
+        title: `Open ${namedSite ? namedSite[0].toUpperCase() + namedSite.slice(1) : "link"}`,
+        description: "Ready to open this in a new browser tab.",
+        url,
+      };
+    }
+  }
+  const whatsAppMatch = raw.match(/(?:whatsapp|message)\s+(.+)/i);
+  if (whatsAppMatch && lower.includes("whatsapp")) {
+    return {
+      kind: "open_url",
+      title: "Prepare WhatsApp message",
+      description: "Ready to open WhatsApp with this message drafted. You press send there.",
+      url: `https://wa.me/?text=${encodeURIComponent(whatsAppMatch[1].trim())}`,
+    };
+  }
+  const searchMatch = raw.match(/(?:search|google|research|find)\s+(?:for\s+)?(.+)/i);
+  if (searchMatch) {
+    const query = searchMatch[1].trim();
+    return {
+      kind: "web_search",
+      title: "Search the web",
+      description: `Ready to search for “${query}”.`,
+      query,
+    };
+  }
+  const copyMatch = raw.match(/copy\s+(.+)/i);
+  if (copyMatch) {
+    return {
+      kind: "copy_text",
+      title: "Copy text",
+      description: "Ready to copy this to your clipboard.",
+      text: copyMatch[1].trim(),
+    };
+  }
+  if (/\b(read|open|analyse|analyze|summari[sz]e|check)\b/i.test(raw) && /\b(file|files|document|pdf|txt|doc)\b/i.test(raw)) {
+    return {
+      kind: "pick_files",
+      title: "Access files",
+      description: "Ready to ask permission and read files you choose from this device.",
+    };
+  }
+  const reminderMatch = raw.match(/remind me to\s+(.+?)\s+in\s+(\d+)\s*(second|seconds|minute|minutes|hour|hours)/i);
+  if (reminderMatch) {
+    const amount = Number(reminderMatch[2]);
+    const unit = reminderMatch[3].toLowerCase();
+    const multiplier = unit.startsWith("second") ? 1000 : unit.startsWith("minute") ? 60_000 : 3_600_000;
+    return {
+      kind: "notify",
+      title: "Set reminder",
+      description: `Ready to remind you in ${amount} ${unit}.`,
+      text: reminderMatch[1].trim(),
+      delayMs: amount * multiplier,
+    };
+  }
+  return null;
+}
 
 export function ChatPanel({
   conversationId,
@@ -59,9 +153,11 @@ export function ChatPanel({
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
   const abortRef = useRef<AbortController | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<PlaybackHandle | null>(null);
   const recRef = useRef<ReturnType<typeof getSpeechRecognition>>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   useEffect(() => {
     if (serverMsgs) setMessages(serverMsgs as Msg[]);
@@ -86,8 +182,10 @@ export function ChatPanel({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
   });
 
-  async function sendText(text: string) {
+  async function sendText(text: string, skipActionInference = false) {
     if (!text.trim() || sending) return;
+    const proposedAction = skipActionInference ? null : inferPendingAction(text);
+    if (proposedAction) setPendingAction(proposedAction);
     const userMsg: Msg = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages((m) => [...m, userMsg]);
     setInput("");
@@ -118,6 +216,9 @@ export function ChatPanel({
           memories: (memories ?? []).map((m) => m.content),
           displayName: profile?.display_name ?? undefined,
           language: profile?.preferred_language ?? "english",
+          pendingAction: proposedAction
+            ? { title: proposedAction.title, description: proposedAction.description }
+            : undefined,
         }),
       });
       if (!r.ok || !r.body) {
@@ -152,6 +253,8 @@ export function ChatPanel({
               assistantText += evt.delta;
               setStreaming(assistantText);
               onIslandChange({ kind: "thinking", label: "Streaming…" });
+            } else if (evt.type === "error" && typeof evt.text === "string") {
+              throw new Error(evt.text);
             }
           } catch {
             /* ignore non-JSON keepalives */
@@ -167,19 +270,22 @@ export function ChatPanel({
         if (content) addMemMut.mutate(content);
       }
       const displayText = assistantText.replace(memRegex, "").trim();
+      const fallbackText = proposedAction
+        ? `I analysed that task. Confirm it below and I’ll execute: ${proposedAction.title}.`
+        : "I’m online. Tell me what you want done next.";
 
       const assistantMsg: Msg = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: displayText,
+        content: displayText || fallbackText,
       };
       setMessages((m) => [...m, assistantMsg]);
       setStreaming("");
-      saveMut.mutate({ role: "assistant", content: displayText });
+      saveMut.mutate({ role: "assistant", content: assistantMsg.content });
 
-      if (voiceOn && displayText) {
+      if (voiceOn && assistantMsg.content) {
         onIslandChange({ kind: "speaking", label: "Texa" });
-        audioRef.current = await speak(displayText, () => {
+        audioRef.current = await speak(assistantMsg.content, () => {
           onIslandChange({ kind: "idle" });
           // resume hands-free listening
           if (handsFree) startListening(true);
@@ -207,6 +313,51 @@ export function ChatPanel({
     audioRef.current = null;
     setSending(false);
     onIslandChange({ kind: "idle" });
+  }
+
+  async function executePendingAction() {
+    if (!pendingAction) return;
+    onIslandChange({ kind: "task", label: pendingAction.title });
+    try {
+      if (pendingAction.kind === "open_url") {
+        window.open(pendingAction.url, "_blank", "noopener,noreferrer");
+      } else if (pendingAction.kind === "web_search") {
+        window.open(`https://www.google.com/search?q=${encodeURIComponent(pendingAction.query)}`, "_blank", "noopener,noreferrer");
+      } else if (pendingAction.kind === "copy_text") {
+        await navigator.clipboard.writeText(pendingAction.text);
+        toast.success("Copied");
+      } else if (pendingAction.kind === "pick_files") {
+        fileInputRef.current?.click();
+      } else if (pendingAction.kind === "notify") {
+        const showReminder = () => new Notification("Texa reminder", { body: pendingAction.text });
+        if (Notification.permission === "granted") {
+          window.setTimeout(showReminder, pendingAction.delayMs);
+        } else {
+          const permission = await Notification.requestPermission();
+          if (permission !== "granted") throw new Error("Notification permission denied");
+          window.setTimeout(showReminder, pendingAction.delayMs);
+        }
+        toast.success("Reminder armed");
+      }
+      setPendingAction(null);
+    } catch (err) {
+      toast.error((err as Error).message || "Task blocked by the browser");
+    } finally {
+      onIslandChange({ kind: "idle" });
+      if (handsFree) startListening(true);
+    }
+  }
+
+  async function handleFiles(files: FileList | null) {
+    if (!files?.length) return;
+    setPendingAction(null);
+    const snippets = await Promise.all(
+      Array.from(files).slice(0, 5).map(async (file) => {
+        const text = await file.text().catch(() => "[could not read as text]");
+        return `File: ${file.name}\n${text.slice(0, 12000)}`;
+      }),
+    );
+    sendText(`Analyse these selected files and help me with the task:\n\n${snippets.join("\n\n---\n\n")}`, true);
   }
 
   // -------- voice recognition --------
@@ -250,8 +401,10 @@ export function ChatPanel({
     rec.onend = () => {
       setListening(false);
       if (handsFree && !sending) {
-        // Restart continuous mode
-        setTimeout(() => startListening(true), 400);
+        const text = stripWakeWord(finalText.trim());
+        setInterim("");
+        if (text.length > 2) sendText(text);
+        else setTimeout(() => startListening(true), 400);
       } else if (!handsFree && finalText.trim()) {
         const text = finalText.trim();
         setInterim("");
@@ -344,6 +497,20 @@ export function ChatPanel({
             streaming
           />
         )}
+        {pendingAction && (
+          <div className="max-w-lg glass-strong neon-border rounded-2xl p-3 animate-fade-up">
+            <div className="text-sm font-medium">{pendingAction.title}</div>
+            <div className="text-xs text-muted-foreground mt-1">{pendingAction.description}</div>
+            <div className="flex gap-2 mt-3">
+              <Button size="sm" className="btn-hero" onClick={executePendingAction}>
+                <CheckCircle2 className="h-4 w-4 mr-1.5" /> Confirm
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setPendingAction(null)}>
+                <XCircle className="h-4 w-4 mr-1.5" /> Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* composer */}
@@ -354,6 +521,13 @@ export function ChatPanel({
           </div>
         )}
         <div className="glass rounded-2xl p-2 flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => handleFiles(e.currentTarget.files)}
+          />
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

@@ -161,13 +161,13 @@ function Landing() {
       <section className="relative z-10 max-w-3xl mx-auto px-5 pb-24 text-center">
         <div className="glass-strong neon-border rounded-3xl p-10">
           <h3 className="text-3xl font-semibold">Ready to meet Texa?</h3>
-          <p className="text-muted-foreground mt-2 mb-6">Free to try with your Lovable Cloud account.</p>
+          <p className="text-muted-foreground mt-2 mb-6">Free to try with your TEXA account.</p>
           <Link to="/auth"><Button size="lg" className="btn-hero">Get started</Button></Link>
         </div>
       </section>
 
       <footer className="relative z-10 text-center text-xs text-muted-foreground pb-10">
-        TEXA v1.0 · Powered by Lovable AI & ElevenLabs
+        TEXA v1.0 · AI voice operating system
       </footer>
     </div>
   );

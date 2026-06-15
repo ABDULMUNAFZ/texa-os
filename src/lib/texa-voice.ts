@@ -38,15 +38,31 @@ export function speechSupported(): boolean {
   return Boolean(w.SpeechRecognition || w.webkitSpeechRecognition);
 }
 
-// Play TTS audio from /api/tts
-export async function speak(text: string, onEnd?: () => void): Promise<HTMLAudioElement | null> {
+export type PlaybackHandle = { pause: () => void };
+
+function speakWithBrowserVoice(text: string, onEnd?: () => void): PlaybackHandle | null {
+  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return null;
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voices = window.speechSynthesis.getVoices();
+  utterance.voice = voices.find((v) => /female|samantha|zira|google uk english female/i.test(v.name)) ?? voices[0] ?? null;
+  utterance.rate = 1;
+  utterance.pitch = 1.08;
+  utterance.onend = () => onEnd?.();
+  utterance.onerror = () => onEnd?.();
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+  return { pause: () => window.speechSynthesis.cancel() };
+}
+
+// Play TTS audio from /api/tts, falling back to built-in browser speech.
+export async function speak(text: string, onEnd?: () => void): Promise<PlaybackHandle | null> {
   try {
     const r = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
     });
-    if (!r.ok) throw new Error(`TTS failed: ${r.status}`);
+    if (!r.ok) return speakWithBrowserVoice(text, onEnd);
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
@@ -58,8 +74,7 @@ export async function speak(text: string, onEnd?: () => void): Promise<HTMLAudio
     return audio;
   } catch (err) {
     console.error("[TTS]", err);
-    onEnd?.();
-    return null;
+    return speakWithBrowserVoice(text, onEnd);
   }
 }
 
