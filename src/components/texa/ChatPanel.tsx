@@ -326,6 +326,8 @@ export function ChatPanel({
       } else if (pendingAction.kind === "copy_text") {
         await navigator.clipboard.writeText(pendingAction.text);
         toast.success("Copied");
+      } else if (pendingAction.kind === "pick_files") {
+        fileInputRef.current?.click();
       } else if (pendingAction.kind === "notify") {
         const showReminder = () => new Notification("Texa reminder", { body: pendingAction.text });
         if (Notification.permission === "granted") {
@@ -344,6 +346,18 @@ export function ChatPanel({
       onIslandChange({ kind: "idle" });
       if (handsFree) startListening(true);
     }
+  }
+
+  async function handleFiles(files: FileList | null) {
+    if (!files?.length) return;
+    setPendingAction(null);
+    const snippets = await Promise.all(
+      Array.from(files).slice(0, 5).map(async (file) => {
+        const text = await file.text().catch(() => "[could not read as text]");
+        return `File: ${file.name}\n${text.slice(0, 12000)}`;
+      }),
+    );
+    sendText(`Analyse these selected files and help me with the task:\n\n${snippets.join("\n\n---\n\n")}`, true);
   }
 
   // -------- voice recognition --------
