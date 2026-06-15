@@ -137,6 +137,7 @@ export function ChatPanel({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recRef = useRef<ReturnType<typeof getSpeechRecognition>>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   useEffect(() => {
     if (serverMsgs) setMessages(serverMsgs as Msg[]);
@@ -163,6 +164,8 @@ export function ChatPanel({
 
   async function sendText(text: string) {
     if (!text.trim() || sending) return;
+    const proposedAction = inferPendingAction(text);
+    if (proposedAction) setPendingAction(proposedAction);
     const userMsg: Msg = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages((m) => [...m, userMsg]);
     setInput("");
@@ -193,6 +196,9 @@ export function ChatPanel({
           memories: (memories ?? []).map((m) => m.content),
           displayName: profile?.display_name ?? undefined,
           language: profile?.preferred_language ?? "english",
+          pendingAction: proposedAction
+            ? { title: proposedAction.title, description: proposedAction.description }
+            : undefined,
         }),
       });
       if (!r.ok || !r.body) {
@@ -227,6 +233,8 @@ export function ChatPanel({
               assistantText += evt.delta;
               setStreaming(assistantText);
               onIslandChange({ kind: "thinking", label: "Streaming…" });
+            } else if (evt.type === "error" && typeof evt.text === "string") {
+              throw new Error(evt.text);
             }
           } catch {
             /* ignore non-JSON keepalives */
@@ -242,19 +250,22 @@ export function ChatPanel({
         if (content) addMemMut.mutate(content);
       }
       const displayText = assistantText.replace(memRegex, "").trim();
+      const fallbackText = proposedAction
+        ? `I analysed that task. Confirm it below and I’ll execute: ${proposedAction.title}.`
+        : "I’m online. Tell me what you want done next.";
 
       const assistantMsg: Msg = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: displayText,
+        content: displayText || fallbackText,
       };
       setMessages((m) => [...m, assistantMsg]);
       setStreaming("");
-      saveMut.mutate({ role: "assistant", content: displayText });
+      saveMut.mutate({ role: "assistant", content: assistantMsg.content });
 
-      if (voiceOn && displayText) {
+      if (voiceOn && assistantMsg.content) {
         onIslandChange({ kind: "speaking", label: "Texa" });
-        audioRef.current = await speak(displayText, () => {
+        audioRef.current = await speak(assistantMsg.content, () => {
           onIslandChange({ kind: "idle" });
           // resume hands-free listening
           if (handsFree) startListening(true);
