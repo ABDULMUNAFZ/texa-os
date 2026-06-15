@@ -284,17 +284,8 @@ export function ChatPanel({
       setStreaming("");
       saveMut.mutate({ role: "assistant", content: assistantMsg.content });
 
-      if (voiceOn && assistantMsg.content) {
-        onIslandChange({ kind: "speaking", label: "Texa" });
-        audioRef.current = await speak(assistantMsg.content, () => {
-          onIslandChange({ kind: "idle" });
-          // resume hands-free listening
-          if (handsFree) startListening(true);
-        });
-      } else {
-        onIslandChange({ kind: "idle" });
-        if (handsFree) startListening(true);
-      }
+      onIslandChange({ kind: "idle" });
+      if (handsFree) startListening(true);
     } catch (err) {
       if ((err as Error).name === "AbortError") {
         toast.info("Stopped");
