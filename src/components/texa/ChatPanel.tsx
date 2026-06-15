@@ -95,6 +95,13 @@ function inferPendingAction(text: string): PendingAction | null {
       text: copyMatch[1].trim(),
     };
   }
+  if (/\b(read|open|analyse|analyze|summari[sz]e|check)\b/i.test(raw) && /\b(file|files|document|pdf|txt|doc)\b/i.test(raw)) {
+    return {
+      kind: "pick_files",
+      title: "Access files",
+      description: "Ready to ask permission and read files you choose from this device.",
+    };
+  }
   const reminderMatch = raw.match(/remind me to\s+(.+?)\s+in\s+(\d+)\s*(second|seconds|minute|minutes|hour|hours)/i);
   if (reminderMatch) {
     const amount = Number(reminderMatch[2]);
