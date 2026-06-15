@@ -295,6 +295,37 @@ export function ChatPanel({
     onIslandChange({ kind: "idle" });
   }
 
+  async function executePendingAction() {
+    if (!pendingAction) return;
+    onIslandChange({ kind: "executing", label: pendingAction.title });
+    try {
+      if (pendingAction.kind === "open_url") {
+        window.open(pendingAction.url, "_blank", "noopener,noreferrer");
+      } else if (pendingAction.kind === "web_search") {
+        window.open(`https://www.google.com/search?q=${encodeURIComponent(pendingAction.query)}`, "_blank", "noopener,noreferrer");
+      } else if (pendingAction.kind === "copy_text") {
+        await navigator.clipboard.writeText(pendingAction.text);
+        toast.success("Copied");
+      } else if (pendingAction.kind === "notify") {
+        const showReminder = () => new Notification("Texa reminder", { body: pendingAction.text });
+        if (Notification.permission === "granted") {
+          window.setTimeout(showReminder, pendingAction.delayMs);
+        } else {
+          const permission = await Notification.requestPermission();
+          if (permission !== "granted") throw new Error("Notification permission denied");
+          window.setTimeout(showReminder, pendingAction.delayMs);
+        }
+        toast.success("Reminder armed");
+      }
+      setPendingAction(null);
+    } catch (err) {
+      toast.error((err as Error).message || "Task blocked by the browser");
+    } finally {
+      onIslandChange({ kind: "idle" });
+      if (handsFree) startListening(true);
+    }
+  }
+
   // -------- voice recognition --------
   const supportsSR = useMemo(() => speechSupported(), []);
 
@@ -429,6 +460,20 @@ export function ChatPanel({
             message={{ id: "streaming", role: "assistant", content: streaming }}
             streaming
           />
+        )}
+        {pendingAction && (
+          <div className="max-w-lg glass-strong neon-border rounded-2xl p-3 animate-fade-up">
+            <div className="text-sm font-medium">{pendingAction.title}</div>
+            <div className="text-xs text-muted-foreground mt-1">{pendingAction.description}</div>
+            <div className="flex gap-2 mt-3">
+              <Button size="sm" className="btn-hero" onClick={executePendingAction}>
+                <CheckCircle2 className="h-4 w-4 mr-1.5" /> Confirm
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setPendingAction(null)}>
+                <XCircle className="h-4 w-4 mr-1.5" /> Cancel
+              </Button>
+            </div>
+          </div>
         )}
       </div>
 
