@@ -26,7 +26,7 @@ export function VoiceWaveform({
         analyser = ctx.createAnalyser();
         analyser.fftSize = 64;
         src.connect(analyser);
-        data = new Uint8Array(analyser.frequencyBinCount);
+        data = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
         const tick = () => {
           if (!analyser || !data) return;
           analyser.getByteFrequencyData(data);
