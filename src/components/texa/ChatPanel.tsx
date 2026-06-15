@@ -11,7 +11,17 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, Mic, MicOff, Send, Square, Volume2, VolumeX, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  FileText,
+  Mic,
+  MicOff,
+  Send,
+  Square,
+  Volume2,
+  VolumeX,
+  XCircle,
+} from "lucide-react";
 import { ModelSelector } from "./ModelSelector";
 import {
   containsWakeWord,
@@ -28,6 +38,7 @@ type PendingAction =
   | { kind: "open_url"; title: string; description: string; url: string }
   | { kind: "web_search"; title: string; description: string; query: string }
   | { kind: "copy_text"; title: string; description: string; text: string }
+  | { kind: "pick_files"; title: string; description: string }
   | { kind: "notify"; title: string; description: string; text: string; delayMs: number };
 
 const SITE_URLS: Record<string, string> = {
