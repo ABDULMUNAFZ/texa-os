@@ -11,7 +11,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Mic, MicOff, Send, Square, Volume2, VolumeX } from "lucide-react";
+import { CheckCircle2, Mic, MicOff, Send, Square, Volume2, VolumeX, XCircle } from "lucide-react";
 import { ModelSelector } from "./ModelSelector";
 import {
   containsWakeWord,
@@ -24,6 +24,81 @@ import { toast } from "sonner";
 import type { IslandState } from "./DynamicIsland";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; created_at?: string };
+type PendingAction =
+  | { kind: "open_url"; title: string; description: string; url: string }
+  | { kind: "web_search"; title: string; description: string; query: string }
+  | { kind: "copy_text"; title: string; description: string; text: string }
+  | { kind: "notify"; title: string; description: string; text: string; delayMs: number };
+
+const SITE_URLS: Record<string, string> = {
+  google: "https://google.com",
+  youtube: "https://youtube.com",
+  gmail: "https://mail.google.com",
+  whatsapp: "https://web.whatsapp.com",
+  instagram: "https://instagram.com",
+  github: "https://github.com",
+  linkedin: "https://linkedin.com",
+};
+
+function inferPendingAction(text: string): PendingAction | null {
+  const raw = text.trim();
+  const lower = raw.toLowerCase();
+  const urlMatch = raw.match(/https?:\/\/[^\s]+/i);
+  if (/\b(open|launch|go to|visit)\b/i.test(raw)) {
+    const namedSite = Object.keys(SITE_URLS).find((site) => lower.includes(site));
+    const url = urlMatch?.[0] || (namedSite ? SITE_URLS[namedSite] : null);
+    if (url) {
+      return {
+        kind: "open_url",
+        title: `Open ${namedSite ? namedSite[0].toUpperCase() + namedSite.slice(1) : "link"}`,
+        description: "Ready to open this in a new browser tab.",
+        url,
+      };
+    }
+  }
+  const whatsAppMatch = raw.match(/(?:whatsapp|message)\s+(.+)/i);
+  if (whatsAppMatch && lower.includes("whatsapp")) {
+    return {
+      kind: "open_url",
+      title: "Prepare WhatsApp message",
+      description: "Ready to open WhatsApp with this message drafted. You press send there.",
+      url: `https://wa.me/?text=${encodeURIComponent(whatsAppMatch[1].trim())}`,
+    };
+  }
+  const searchMatch = raw.match(/(?:search|google|research|find)\s+(?:for\s+)?(.+)/i);
+  if (searchMatch) {
+    const query = searchMatch[1].trim();
+    return {
+      kind: "web_search",
+      title: "Search the web",
+      description: `Ready to search for “${query}”.`,
+      query,
+    };
+  }
+  const copyMatch = raw.match(/copy\s+(.+)/i);
+  if (copyMatch) {
+    return {
+      kind: "copy_text",
+      title: "Copy text",
+      description: "Ready to copy this to your clipboard.",
+      text: copyMatch[1].trim(),
+    };
+  }
+  const reminderMatch = raw.match(/remind me to\s+(.+?)\s+in\s+(\d+)\s*(second|seconds|minute|minutes|hour|hours)/i);
+  if (reminderMatch) {
+    const amount = Number(reminderMatch[2]);
+    const unit = reminderMatch[3].toLowerCase();
+    const multiplier = unit.startsWith("second") ? 1000 : unit.startsWith("minute") ? 60_000 : 3_600_000;
+    return {
+      kind: "notify",
+      title: "Set reminder",
+      description: `Ready to remind you in ${amount} ${unit}.`,
+      text: reminderMatch[1].trim(),
+      delayMs: amount * multiplier,
+    };
+  }
+  return null;
+}
 
 export function ChatPanel({
   conversationId,
